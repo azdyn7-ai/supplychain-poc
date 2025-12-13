@@ -1,0 +1,60 @@
+name: Sign & Attest (SLSA L2)
+on:
+  workflow_run:
+    workflows: ["Build & Push Image"]
+    types: [completed]
+
+permissions:
+  contents: read
+  id-token: write
+  packages: read
+
+jobs:
+  sign:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: image-ref
+
+      - name: Read image reference
+        id: read
+        run: |
+          IMAGE=$(cat image-ref.txt)
+          echo "IMAGE=$IMAGE" >> $GITHUB_OUTPUT
+
+      - name: Install Syft
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh \
+          | sh -s -- -b /usr/local/bin
+
+      - name: Generate SBOM for attestation
+        run: |
+          syft "${{ steps.read.outputs.IMAGE }}" -o cyclonedx-json > sbom.json
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: "latest"
+
+      - name: Sign (Keyless OIDC)
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          cosign sign "${{ steps.read.outputs.IMAGE }}"
+
+      - name: SLSA Attestation
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          cosign attest \
+            --predicate sbom.json \
+            --type slsaprovenance \
+            "${{ steps.read.outputs.IMAGE }}"
+
+      - name: Verify Attestation
+        run: |
+          cosign verify "${{ steps.read.outputs.IMAGE }}" || true

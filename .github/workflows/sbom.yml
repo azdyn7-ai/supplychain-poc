@@ -1,0 +1,41 @@
+name: SBOM & Code Scan (PR)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  sbom:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Syft
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh \
+          | sh -s -- -b /usr/local/bin
+          syft --version
+
+      - name: Generate SBOM
+        run: |
+          syft . -o cyclonedx-json > sbom-${{ github.sha }}.json
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ github.sha }}
+          path: sbom-${{ github.sha }}.json
+
+      - name: Install Trivy
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
+          | sudo sh -s -- -b /usr/local/bin
+
+      - name: Trivy filesystem scan
+        run: |
+          trivy fs --exit-code 1 --severity HIGH,CRITICAL .
