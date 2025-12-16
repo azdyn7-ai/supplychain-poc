@@ -8,7 +8,7 @@ permissions:
   id-token: write
 
 env:
-  IMAGE_NAME: docker.io/azdyndh/supplychain-poc
+  IMAGE_NAME: docker.io/azdyn7-ai/supplychain-poc
   TAG: ${{ github.sha }}
 
 jobs:
