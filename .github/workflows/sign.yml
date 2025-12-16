@@ -22,9 +22,9 @@ jobs:
         with:
           name: image-ref
           path: .
+          run-id: ${{ github.event.workflow_run.id }}
 
       - name: Read image reference
-        id: image
         run: |
           echo "IMAGE_REF=$(cat image-ref.txt)" >> $GITHUB_ENV
 
@@ -53,9 +53,7 @@ jobs:
         env:
           COSIGN_EXPERIMENTAL: "1"
         run: |
-          cosign attest \
-            --type slsaprovenance \
-            $IMAGE_REF
+          cosign attest --type slsaprovenance $IMAGE_REF
 
       - name: Verify signature (optional)
         run: |
