@@ -1,8 +1,10 @@
-name: Sign & Attest (SLSA L2)
+name: Sign & Attest Image (SLSA L2)
+
 on:
   workflow_run:
     workflows: ["Build & Push Image"]
-    types: [completed]
+    types:
+      - completed
 
 permissions:
   contents: read
@@ -15,46 +17,46 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Download artifact
+      - name: Download image reference artifact
         uses: actions/download-artifact@v4
         with:
           name: image-ref
+          path: .
 
       - name: Read image reference
-        id: read
+        id: image
         run: |
-          IMAGE=$(cat image-ref.txt)
-          echo "IMAGE=$IMAGE" >> $GITHUB_OUTPUT
+          echo "IMAGE_REF=$(cat image-ref.txt)" >> $GITHUB_ENV
 
-      - name: Install Syft
-        run: |
-          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh \
-          | sh -s -- -b /usr/local/bin
-
-      - name: Generate SBOM for attestation
-        run: |
-          syft "${{ steps.read.outputs.IMAGE }}" -o cyclonedx-json > sbom.json
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Install Cosign
         uses: sigstore/cosign-installer@v3
         with:
-          cosign-release: "latest"
+          cosign-release: latest
 
-      - name: Sign (Keyless OIDC)
+      - name: Pull image
+        run: |
+          docker pull $IMAGE_REF
+
+      - name: Sign image (Cosign keyless)
         env:
           COSIGN_EXPERIMENTAL: "1"
         run: |
-          cosign sign "${{ steps.read.outputs.IMAGE }}"
+          cosign sign $IMAGE_REF
 
-      - name: SLSA Attestation
+      - name: Attest SLSA provenance
         env:
           COSIGN_EXPERIMENTAL: "1"
         run: |
           cosign attest \
-            --predicate sbom.json \
             --type slsaprovenance \
-            "${{ steps.read.outputs.IMAGE }}"
+            $IMAGE_REF
 
-      - name: Verify Attestation
+      - name: Verify signature (optional)
         run: |
-          cosign verify "${{ steps.read.outputs.IMAGE }}" || true
+          cosign verify $IMAGE_REF || true
